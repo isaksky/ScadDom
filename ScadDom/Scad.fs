@@ -249,7 +249,7 @@ let renderToStreamWriter (dom: ScadDomNode) (sw: StreamWriter) (leaveOpen: bool)
             sw.Dispose()
 
 let renderToPath (dom: ScadDomNode) (path: string) : unit =
-    use fs = File.OpenWrite(path)
+    use fs = File.Open(path, FileMode.Create)
     use sw = new StreamWriter(fs)
     let outputTree = domToOutputTree dom
     renderOutput sw outputTree
