@@ -24,30 +24,30 @@ let ``Circle Works`` () = "circle(5);" @= Circle 5.0
 
 [<Fact>]
 let ``Square default center Works`` () =
-    "square([10, 5], false);" @= Square(10.0, 5.0, false)
+    "square([10, 5], center = false);" @= Square(10.0, 5.0, false)
 
 [<Fact>]
 let ``Square centered Works`` () =
-    "square([7, 7], true);" @= Square(7.0, 7.0, true)
+    "square([7, 7], center = true);" @= Square(7.0, 7.0, true)
 
 [<Fact>]
 let ``Sphere Works`` () = "sphere(10);" @= Sphere 10.0
 
 [<Fact>]
 let ``Cube single dimension Works`` () =
-    "cube(5, center=false);" @= Cube(5.0, 5.0, 5.0, false)
+    "cube(5, center = false);" @= Cube(5.0, 5.0, 5.0, false)
 
 [<Fact>]
 let ``Cube multiple dimensions centered Works`` () =
-    "cube([5, 6, 7], center=true);" @= Cube(5.0, 6.0, 7.0, true)
+    "cube([5, 6, 7], center = true);" @= Cube(5.0, 6.0, 7.0, true)
 
 [<Fact>]
 let ``Cylinder Works`` () =
-    "cylinder(10, 3, 4, center=false);" @= Cylinder(10.0, 3.0, 4.0, false)
+    "cylinder(10, 3, 4, center = false);" @= Cylinder(10.0, 3.0, 4.0, false)
 
 [<Fact>]
 let ``Cylinder centered Works`` () =
-    "cylinder(10, 5, 5, center=true);" @= Cylinder(10.0, 5.0, 5.0, true)
+    "cylinder(10, 5, 5, center = true);" @= Cylinder(10.0, 5.0, 5.0, true)
 
 [<Fact>]
 let ``Difference Works`` () =
@@ -57,12 +57,12 @@ let ``Difference Works`` () =
 
 [<Fact>]
 let ``Union Works`` () =
-    "union() { square([5, 5], false); circle(3); }"
+    "union() { square([5, 5], center = false); circle(3); }"
     @= Union [ Square(5.0, 5.0, false); Circle 3.0 ]
 
 [<Fact>]
 let ``Intersection Works`` () =
-    "intersection() { cube(10, center=false); sphere(7); }"
+    "intersection() { cube(10, center = false); sphere(7); }"
     @= Intersection [ Cube(10.0, 10.0, 10.0, false); Sphere 7.0 ]
 
 [<Fact>]
@@ -72,7 +72,7 @@ let ``Translate Works`` () =
 
 [<Fact>]
 let ``Scale Works`` () =
-    "scale(v = [2, 0.5, 1]) { cube(5, center=false); }"
+    "scale(v = [2, 0.5, 1]) { cube(5, center = false); }"
     @= Scale(Cube(5.0, 5.0, 5.0, false), { x = 2.0; y = 0.5; z = 1.0 })
 
 [<Fact>]
@@ -86,12 +86,12 @@ let ``Color named Works`` () =
 
 [<Fact>]
 let ``Color RGBA Works`` () =
-    """color(c = [0.1, 0.2, 0.3], alpha = 0.4) { square([5, 5], true); }"""
+    """color(c = [0.1, 0.2, 0.3], alpha = 0.4) { square([5, 5], center = true); }"""
     @= Color(ScadColor(0.1, 0.2, 0.3, 0.4), Square(5.0, 5.0, true))
 
 [<Fact>]
 let ``Projection Works`` () =
-    """projection(cut = true) { cube(5, center=false); }"""
+    """projection(cut = true) { cube(5, center = false); }"""
     @= Projection(Cube(5.0, 5.0, 5.0, false), true)
 
 [<Fact>]
@@ -113,21 +113,19 @@ let ``LinearExtrude with options Works`` () =
             scale = Some 2
         )
 
-    """linear_extrude(height = 10, v = [0, 0, 1], center = true, convexity = 5, twist = 90, slices = 20, scale = 2) { square([3, 3], true); }"""
+    """linear_extrude(height = 10, v = [0, 0, 1], center = true, convexity = 5, twist = 90, slices = 20, scale = 2) { square([3, 3], center = true); }"""
     @= le
 
 [<Fact>]
 let ``RotateExtrude minimal Works`` () =
-    // Assuming RotateExtrude still renders as linear_extrude based on previous context
-    """linear_extrude() { circle(2); }"""
+    """rotate_extrude() { circle(2); }"""
     @= RotateExtrude(Circle 2.0, None, None, None)
 
 [<Fact>]
 let ``RotateExtrude with options Works`` () =
     let re =
         RotateExtrude(child = Square(1.0, 4.0, false), convexity = Some 10, angle = Some 270.0, start = Some 45.0)
-    // Assuming RotateExtrude still renders as linear_extrude
-    """linear_extrude(convexity = 10, angle = 270, start = 45) { square([1, 4], false); }"""
+    """rotate_extrude(convexity = 10, angle = 270, start = 45) { square([1, 4], center = false); }"""
     @= re
 
 [<Fact>]
@@ -170,7 +168,7 @@ let ``OffsetRadius Works`` () =
 [<Fact>]
 let ``OffsetDelta Works`` () =
     let o = OffsetDelta(Square(5.0, 5.0, false), 1.0, true)
-    """offset(delta = 1, chamfer = true) { square([5, 5], false); }""" @= o
+    """offset(delta = 1, chamfer = true) { square([5, 5], center = false); }""" @= o
 
 [<Fact>]
 let ``Hull Works`` () =
@@ -180,12 +178,12 @@ let ``Hull Works`` () =
 [<Fact>]
 let ``Minkowski minimal Works`` () =
     let m = Minkowski(None, [ Sphere 5.0; Cube(1.0, 1.0, 1.0, true) ])
-    """minkowski() { sphere(5); cube(1, center=true); }""" @= m
+    """minkowski() { sphere(5); cube(1, center = true); }""" @= m
 
 [<Fact>]
 let ``Minkowski with convexity Works`` () =
     let m = Minkowski(Some 4, [ Sphere 5.0; Cube(1.0, 1.0, 1.0, true) ])
-    """minkowski(4) { sphere(5); cube(1, center=true); }""" @= m
+    """minkowski(4) { sphere(5); cube(1, center = true); }""" @= m
 
 [<Fact>]
 let ``AsteriskModifier Works`` () =
@@ -197,11 +195,11 @@ let ``ExclamationModifier Works`` () =
 
 [<Fact>]
 let ``HashModifier Works`` () =
-    "#cube(3, center=false);" @= HashModifier(Cube(3.0, 3.0, 3.0, false))
+    "#cube(3, center = false);" @= HashModifier(Cube(3.0, 3.0, 3.0, false))
 
 [<Fact>]
 let ``PercentModifier Works`` () =
-    "%cylinder(5, 1, 1, center=true);"
+    "%cylinder(5, 1, 1, center = true);"
     @= PercentModifier(Cylinder(5.0, 1.0, 1.0, true))
 
 [<Fact>]
@@ -211,5 +209,5 @@ let ``Nested modifiers and operations Works`` () =
             [ AsteriskModifier(Circle 10.0)
               Translate(HashModifier(Cube(5.0, 5.0, 5.0, true)), { x = 10.0; y = 0.0; z = 0.0 }) ]
     // Adopting the compact modifier style and semicolons for children
-    """union() { *circle(10); translate(v = [10, 0, 0]) { #cube(5, center=true); } }"""
+    """union() { *circle(10); translate(v = [10, 0, 0]) { #cube(5, center = true); } }"""
     @= n

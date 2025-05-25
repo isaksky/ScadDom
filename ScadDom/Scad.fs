@@ -22,188 +22,233 @@ module internal RenderingUtils =
     let internal p3_str (p: Point3d) =
         $"[{f_str p.x}, {f_str p.y}, {f_str p.z}]"
 
-type private RenderingContext(textWriter: TextWriter) =
-    member val indentLevel = 0 with get, set
-    member val pendingPfx = Queue<char>() with get
+[<AutoOpen>]
+module internal OutputHelpers =
+    type internal FnArg =
+        | RawFnArg of string
+        | NamedFnArg of name: string * valueStr: string
 
-    member this.IncIndent(n: int) =
-        this.indentLevel <- this.indentLevel + n
+    type internal OutputTree =
+        | FnCall of name: string * args: FnArg list * children: OutputTree list
+        | Modified of modifier: string * child: OutputTree
+let private (|MatchName|) (name: string) x = name
 
-    member this.IndentScope() =
-        this.IncIndent 1
-        defer (fun () -> this.IncIndent -1)
-
-    member this.Indent() =
-        for i = 0 to this.indentLevel - 1 do
-            textWriter.Write ' '
-
-    member this.WriteAtIndent(s: string) =
-        this.Indent()
-
-        while this.pendingPfx.Count > 0 do
-            textWriter.Write(this.pendingPfx.Dequeue())
-
-        textWriter.Write s
-
-    member this.WriteLineAtIndent(s: string) =
-        this.Indent()
-
-        while this.pendingPfx.Count > 0 do
-            textWriter.Write(this.pendingPfx.Dequeue())
-
-        textWriter.Write s
-
-let rec private render (ctx: RenderingContext) (dom: ScadDomNode) : unit =
+let rec internal domToOutputTree (dom: ScadDomNode) : OutputTree =
     match dom with
-    | Difference children -> renderFnCall ctx "difference" [] children
-    | Union children -> renderFnCall ctx "union" [] children
-    | Intersection children -> renderFnCall ctx "intersection" [] children
-    | Circle radius -> ctx.WriteLineAtIndent $"circle({f_str radius});"
-    | Square(width, height, center) -> ctx.WriteLineAtIndent $"square([{f_str width}, {f_str height}], {b_str center});"
-    | Polygon(points, paths, convexity) -> failwith "todo"
-    // | Text(content, size, font, horizontalAlign, verticalAlign, spacing, direction, language, script) ->
-    //     failwith "todo"
+    | Difference children & MatchName "difference" name
+    | Union children & MatchName "union" name
+    | Intersection children & MatchName "intersection" name ->
+        FnCall(name, [], children |> List.map domToOutputTree)
+    | Circle radius ->
+        FnCall("circle", [ RawFnArg (f_str radius) ], [])
+    | Square(width, height, center) ->
+        let args =
+            [ RawFnArg <| strWrap "[]" $"{f_str width}, {f_str height}"
+              NamedFnArg("center", b_str center) ]
+        FnCall("square", args, [])
+    | Polygon(points, paths, convexity) ->
+        let pointsArg = RawFnArg <| strWrap "[]" (points |> List.map p2_str |> String.concat ", ")
+        let pathArgsOpt =
+            paths
+            |> Option.map (fun paths ->
+                let pathsArg =
+                    paths
+                    |> List.map (fun route -> strWrap "[]" (route |> List.map i_str |> String.concat ", "))
+                    |> String.concat ", "
+                NamedFnArg("paths", pathsArg))
+        let convexityArgOpt = convexity |> Option.map (fun c -> NamedFnArg("convexity", i_str c))
+        let allArgs = [ pointsArg ] @ (pathArgsOpt |> Option.toList) @ (convexityArgOpt |> Option.toList)
+        FnCall("polygon", allArgs, [])
+    // Case: Text
+    // | Text(content, size, font, halign, valign, spacing, direction, language, script) ->
+    //     let textArg = RawFnArg (escapedUserStringLiteral content)
+    //     let allArgs =
+    //         [ textArg ] @
+    //         (size      |> Option.map (fun s -> NamedFnArg("size", f_str s))           |> Option.toList) @
+    //         (font      |> Option.map (fun f -> NamedFnArg("font", escapedUserStringLiteral f)) |> Option.toList) @
+    //         (halign    |> Option.map (fun h -> NamedFnArg("halign", escapedUserStringLiteral h))  |> Option.toList) @
+    //         (valign    |> Option.map (fun v -> NamedFnArg("valign", escapedUserStringLiteral v))  |> Option.toList) @
+    //         (spacing   |> Option.map (fun s -> NamedFnArg("spacing", f_str s))         |> Option.toList) @
+    //         (direction |> Option.map (fun d -> NamedFnArg("direction", escapedUserStringLiteral d))|> Option.toList) @
+    //         (language  |> Option.map (fun l -> NamedFnArg("language", escapedUserStringLiteral l)) |> Option.toList) @
+    //         (script    |> Option.map (fun s -> NamedFnArg("script", escapedUserStringLiteral s))  |> Option.toList)
+    //     renderFnCall "text" allArgs []
+
+    // Case: Import
     | Import(filePath, convexity, layer) ->
-        let args =
-            seq {
-                yield [ escapedUserStringLiteral filePath ]
-
-                if convexity.IsSome then
-                    yield [ "convexity"; (f_str convexity.Value) ]
-            }
-            |> List.ofSeq
-
-        renderFnCall ctx "import" args []
-    | Projection(child, cut) -> renderFnCall ctx "projection" [ [ "cut"; b_str cut ] ] [ child ]
-    | Sphere radius -> ctx.WriteLineAtIndent $"sphere({f_str radius});"
+        let allArgs =
+            [ RawFnArg (escapedUserStringLiteral filePath) ] @
+            (convexity |> Option.map (fun c -> NamedFnArg("convexity", f_str c)) |> Option.toList) @
+            (layer |> Option.map (fun l -> NamedFnArg("layer", escapedUserStringLiteral l)) |> Option.toList) // Assuming layer is Option<string>
+        FnCall("import", allArgs, [])
+    | Projection(child, cut) ->
+        FnCall("projection", [ NamedFnArg("cut", b_str cut) ], [ domToOutputTree child ])
+    | Sphere radius ->
+        FnCall("sphere", [ RawFnArg (f_str radius) ], [])
     | Cube(width = width; depth = cdepth; height = height; center = center) when width = cdepth && cdepth = height ->
-        ctx.WriteLineAtIndent $"cube({f_str width}, center={b_str center});"
+        FnCall("cube", [ RawFnArg (f_str width); NamedFnArg("center", b_str center) ], [])
     | Cube(width = width; depth = depth; height = height; center = center) ->
-        ctx.WriteLineAtIndent $"cube([{f_str width}, {f_str depth}, {f_str height}], center={b_str center});"
+        FnCall("cube", [ RawFnArg $"[{f_str width}, {f_str depth}, {f_str height}]"; NamedFnArg("center", b_str center) ], [])
     | Cylinder(height, radius1, radius2, center) ->
-        ctx.WriteLineAtIndent $"cylinder({f_str height}, {f_str radius1}, {f_str radius2}, center={b_str center});"
-    // | Polyhedron(points, faces, convexity) -> failwith "todo"
+        let args =
+           [ RawFnArg (f_str height)
+             RawFnArg (f_str radius1)
+             RawFnArg (f_str radius2)
+             NamedFnArg("center", b_str center) ]
+        FnCall("cylinder", args, [])
+    // | Polyhedron(points, faces, convexity) ->
+    //     let pointsArg = RawFnArg $"[{points |> List.map p3_str |> String.concat ", "}]"
+    //     let facesArg = RawFnArg $"[{faces |> List.map (fun facePath -> $"[{facePath |> List.map i_str |> String.concat ", "}]") |> String.concat ", "}]"
+    //     let convexityArgOpt = convexity |> Option.map (fun c -> NamedFnArg("convexity", i_str c))
+    //     let allArgs = [ pointsArg; facesArg ] @ (convexityArgOpt |> Option.toList)
+    //     renderFnCall "polyhedron" allArgs []
     | LinearExtrude(child, height, v, center, convexity, twist, slices, scale) ->
-        let args =
-            seq {
-                yield [ "height"; f_str height ]
-
-                if v.IsSome then
-                    yield [ "v"; p3_str v.Value ]
-
-                if center.IsSome then
-                    yield [ "center"; b_str center.Value ]
-
-                if convexity.IsSome then
-                    yield [ "convexity"; f_str convexity.Value ]
-
-                if twist.IsSome then
-                    yield [ "twist"; i_str twist.Value ]
-
-                if slices.IsSome then
-                    yield [ "slices"; i_str slices.Value ]
-
-                if scale.IsSome then
-                    yield [ "scale"; f_str scale.Value ]
-            }
-            |> List.ofSeq
-
-        renderFnCall ctx "linear_extrude" args [ child ]
+        let allArgs =
+            [ NamedFnArg("height", f_str height) ]
+            @ (v |> Option.map (fun vec -> NamedFnArg("v", p3_str vec)) |> Option.toList)
+            @ (center |> Option.map (fun c -> NamedFnArg("center", b_str c)) |> Option.toList)
+            @ (convexity |> Option.map (fun c -> NamedFnArg("convexity", f_str c)) |> Option.toList)
+            @ (twist |> Option.map (fun t -> NamedFnArg("twist", i_str t)) |> Option.toList)
+            @ (slices |> Option.map (fun s -> NamedFnArg("slices", i_str s)) |> Option.toList)
+            @ (scale |> Option.map (fun sc -> NamedFnArg("scale", f_str sc)) |> Option.toList)
+        FnCall("linear_extrude", allArgs, [ domToOutputTree child ])
     | RotateExtrude(child, convexity, angle, start) ->
-        let args =
-            seq {
-                if convexity.IsSome then
-                    yield [ "convexity"; f_str convexity.Value ]
-
-                if angle.IsSome then
-                    yield [ "angle"; f_str angle.Value ]
-
-                if start.IsSome then
-                    yield [ "start"; f_str start.Value ]
-            }
-            |> List.ofSeq
-
-        renderFnCall ctx "linear_extrude" args [ child ]
-    //| Surface(filePath, center, convexity, invert) -> failwith "todo"
-    | Translate(child, vector) -> renderFnCall ctx "translate" [ [ "v"; p3_str vector ] ] [ child ]
-    //| Rotate(child, rotationAnglesXyz, angle, axisVector) -> failwith "todo"
-    | Scale(child, scaleVector) -> renderFnCall ctx "scale" [ [ "v"; (p3_str scaleVector) ] ] [ child ]
-    //| Resize(child, newDimensions, autoX, autoY, autoZ, convexity) -> failwith "todo"
-    | Mirror(child, mirrorVector) -> renderFnCall ctx "mirror" [ [ "v"; p3_str mirrorVector ] ] [ child ]
+        let allArgs =
+            (convexity |> Option.map (fun c -> NamedFnArg("convexity", f_str c)) |> Option.toList) @
+            (angle |> Option.map (fun a -> NamedFnArg("angle", f_str a)) |> Option.toList) @
+            (start |> Option.map (fun s -> NamedFnArg("start", f_str s)) |> Option.toList)
+        FnCall("rotate_extrude", allArgs, [ domToOutputTree child ])
+    // | Surface(filePath, center, convexity, invert) ->
+    //     let fileArg = RawFnArg (escapedUserStringLiteral filePath)
+    //     let centerArgOpt = center |> Option.map (fun c -> NamedFnArg("center", b_str c))
+    //     let convexityArgOpt = convexity |> Option.map (fun c -> NamedFnArg("convexity", i_str c))
+    //     let invertArgOpt = invert |> Option.map (fun i -> NamedFnArg("invert", b_str i))
+    //     let allArgs = [ fileArg ] @ (centerArgOpt |> Option.toList) @ (convexityArgOpt |> Option.toList) @ (invertArgOpt |> Option.toList)
+    //     renderFnCall "surface" allArgs []
+    | Translate(child, vector) ->
+        FnCall("translate", [ NamedFnArg("v", p3_str vector) ], [ domToOutputTree child ])
+    // | Rotate(child, rotationAnglesXyz, angle, axisVector) ->
+    //     let args =
+    //         match rotationAnglesXyz, angle, axisVector with
+    //         | Some angles, _, _ -> [ RawFnArg (p3_str angles) ] // Euler angles vector
+    //         | None, Some ang, Some axis -> [ RawFnArg (f_str ang); RawFnArg (p3_str axis) ] // Angle and axis vector
+    //         | None, Some ang, None -> [ RawFnArg (p3_str { X = 0.0; Y = 0.0; Z = ang }) ] // Angle only (implicit Z axis)
+    //         | _ -> [] // Or handle as an error/comment, e.g., [ NamedFnArg("error", RawFnArg """ "Invalid Rotate args" """)]
+    //     renderFnCall "rotate" args [ child ]
+    | Scale(child, scaleVector) ->
+        FnCall("scale", [ NamedFnArg("v", p3_str scaleVector) ], [ domToOutputTree child ])
+    // Case: Resize
+    // | Resize(child, newDimensions, autoX, autoY, autoZ, convexity) ->
+    //     let dimsArg = RawFnArg (p3_str newDimensions)
+    //     let autoArgOpt =
+    //         match autoX, autoY, autoZ with
+    //         | Some ax, Some ay, Some az when ax = ay && ay = az -> Some(NamedFnArg("auto", b_str ax)) // All same, single bool
+    //         | None, None, None -> None // No auto specified
+    //         | _ -> // Mixed or some Nones, use vector form, defaulting Nones to false
+    //             let x = autoX.GetValueOrDefault(false)
+    //             let y = autoY.GetValueOrDefault(false)
+    //             let z = autoZ.GetValueOrDefault(false)
+    //             Some(NamedFnArg("auto", $"[{b_str x},{b_str y},{b_str z}]"))
+    //     let convexityArgOpt = convexity |> Option.map (fun c -> NamedFnArg("convexity", i_str c))
+    //     let allArgs = [ dimsArg ] @ (autoArgOpt |> Option.toList) @ (convexityArgOpt |> Option.toList)
+    //     renderFnCall "resize" allArgs [ child ]
+    | Mirror(child, mirrorVector) ->
+        FnCall("mirror", [ NamedFnArg("v", p3_str mirrorVector) ], [ domToOutputTree child ])
     | MultMatrix(child, matrix) ->
         let matrixStr =
-            [ for (f1, f2, f3, f4) in matrix -> $"[{f_str f1}, {f_str f2}, {f_str f3}, {f_str f4}]" ]
+            matrix
+            |> List.map (fun (f1, f2, f3, f4) -> $"[{f_str f1}, {f_str f2}, {f_str f3}, {f_str f4}]")
             |> String.concat ","
-
-        let matrixStr = $"[{matrixStr}]"
-        renderFnCall ctx "multmatrix" [ [ "m"; matrixStr ] ] [ child ]
+        let matrixArgValue = $"[{matrixStr}]"
+        FnCall("multmatrix", [ NamedFnArg("m", matrixArgValue) ], [ domToOutputTree child ])
     | Color(scadColor, child) ->
-        let colorArg =
+        let colorArgs =
             match scadColor with
-            | NamedScadColor(name = name) -> [ escapedUserStringLiteral name ]
-            | ScadColor(red = red; green = green; blue = blue; alpha = alpha) ->
-                [ "c"; $"[{f_str red}, {f_str green}, {f_str blue}], alpha = {f_str alpha}" ]
-
-        renderFnCall ctx "color" [ colorArg ] [ child ]
+            | NamedScadColor name -> [ RawFnArg (escapedUserStringLiteral name) ]
+            | ScadColor(r, g, b, alpha) ->
+                [ NamedFnArg("c", $"[{f_str r}, {f_str g}, {f_str b}]"); NamedFnArg("alpha", f_str alpha) ]
+        FnCall("color", colorArgs, [ domToOutputTree child ])
     | OffsetRadius(child, r) ->
-        let args = [ [ "r"; f_str r ] ]
-        renderFnCall ctx "offset" args [ child ]
+        FnCall("offset", [ NamedFnArg("r", f_str r) ], [ domToOutputTree child ])
     | OffsetDelta(child, delta, chamfer) ->
-        let args = [ [ "delta"; f_str delta ]; [ "chamfer"; b_str chamfer ] ]
-        renderFnCall ctx "offset" args [ child ]
-    | Hull children -> renderFnCall ctx "hull" [] children
+        FnCall("offset", [ NamedFnArg("delta", f_str delta); NamedFnArg("chamfer", b_str chamfer) ], [ domToOutputTree child ])
+    | Hull children ->
+        FnCall("hull", [], children |> List.map domToOutputTree)
     | Minkowski(convexity, children) ->
-        let arg = convexity |> Option.toList |> List.map i_str
-        renderFnCall ctx "minkowski" [ arg ] children
-    | AsteriskModifier child ->
-        ctx.pendingPfx.Enqueue('*')
-        render ctx child
-    | ExclamationModifier child ->
-        ctx.pendingPfx.Enqueue('!')
-        render ctx child
-    | HashModifier child ->
-        ctx.pendingPfx.Enqueue '#'
-        render ctx child
-    | PercentModifier child ->
-        ctx.pendingPfx.Enqueue '%'
-        render ctx child
+        let args = convexity |> Option.map (fun c -> RawFnArg (i_str c)) |> Option.toList
+        FnCall("minkowski", args, children |> List.map domToOutputTree)
+    | AsteriskModifier child & MatchName "*" modifier
+    | ExclamationModifier child & MatchName "!" modifier
+    | HashModifier child & MatchName "#" modifier
+    | PercentModifier child & MatchName "%" modifier ->
+        Modified(modifier, domToOutputTree child)
+    
+let private writeIndent (tw: TextWriter) (depth: int) =
+    for i = 0 to depth * indentSize do
+        tw.Write ' '
 
-and private renderFnCall
-    (ctx: RenderingContext)
-    (fnName: string)
-    (kvps: (string list) list)
-    (children: ScadDomNode list)
-    =
-    let argStr = [ for kvp in kvps -> kvp |> String.concat " = " ] |> String.concat ", "
+let private renderArgs (tw: TextWriter) (args: FnArg list) =
+    let mutable first = true
+    for arg in args do
+        if not first then
+            tw.Write ", "
+        match arg with
+        | RawFnArg s ->
+            tw.Write s
+        | NamedFnArg(name, valueStr) ->
+            tw.Write name; tw.Write " = "; tw.Write valueStr
+        first <- false
 
-    match children with
-    | [] -> ctx.WriteLineAtIndent $"{fnName}({argStr});"
-    | _ ->
-        ctx.WriteLineAtIndent $"{fnName}({argStr}) {{ "
-        use _ = ctx.IndentScope()
-
-        for c in children do
-            render ctx c
-
-        ctx.WriteLineAtIndent " }"
-
+let rec private renderOutput'
+    (tw: TextWriter)
+    (output: OutputTree)
+    (depth: int)
+    (pendingModifiers : Queue<string>) =
+    match output with
+    | FnCall(name, [], []) ->
+        writeIndent tw depth
+        while pendingModifiers.Count > 0 do
+            pendingModifiers.Dequeue() |> tw.Write 
+        tw.Write name; tw.Write "();\n"
+    | FnCall(name, args, children) ->
+        writeIndent tw depth
+        while pendingModifiers.Count > 0 do
+            pendingModifiers.Dequeue() |> tw.Write 
+        tw.Write name
+        tw.Write "("
+        renderArgs tw args
+        tw.Write ")"
+        
+        match children with
+        | [] -> tw.Write ";\n"
+        | _ ->
+            tw.Write " {\n"
+            for c in children do
+                renderOutput' tw c (depth + 1) pendingModifiers
+            writeIndent tw depth
+            tw.Write "}\n"
+    | Modified(modifier, child) ->
+        pendingModifiers.Enqueue modifier
+        renderOutput' tw child depth pendingModifiers
+let private renderOutput (tw: TextWriter) (output: OutputTree) =
+    let pendingModifiers = Queue<string>()
+    renderOutput' tw output 0 pendingModifiers
 let renderToString (dom: ScadDomNode) : string =
     use sw = new StringWriter()
-    let ctx = RenderingContext(sw)
-    render ctx dom
+    let outputTree = domToOutputTree dom
+    renderOutput sw outputTree
     sw.ToString()
 
-let renderToStreamWriter (dom: ScadDomNode) (streamWriter: StreamWriter) (leaveOpen: bool) : unit =
-    let ctx = RenderingContext(streamWriter)
-
+let renderToStreamWriter (dom: ScadDomNode) (sw: StreamWriter) (leaveOpen: bool) : unit =
     try
-        render ctx dom
+        let outputTree = domToOutputTree dom
+        renderOutput sw outputTree
     finally
         if not leaveOpen then
-            streamWriter.Dispose()
+            sw.Dispose()
 
 let renderToPath (dom: ScadDomNode) (path: string) : unit =
     use fs = File.OpenWrite(path)
     use sw = new StreamWriter(fs)
-    let ctx = RenderingContext(sw)
-    render ctx dom
+    let outputTree = domToOutputTree dom
+    renderOutput sw outputTree
