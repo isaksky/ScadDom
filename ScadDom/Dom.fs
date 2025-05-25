@@ -73,7 +73,7 @@ type ScadDomNode =
     | Minkowski of convexity: int option * children: ScadDomNode list
 
     // Modifiers
-    | AsteriskModifier of child: ScadDomNode
-    | ExclamationModifier of child: ScadDomNode
-    | HashModifier of child: ScadDomNode
-    | PercentModifier of child: ScadDomNode
+    | DisableModifier of child: ScadDomNode
+    | RootModifier of child: ScadDomNode
+    | DebugModifier of child: ScadDomNode
+    | BackgroundModifier of child: ScadDomNode

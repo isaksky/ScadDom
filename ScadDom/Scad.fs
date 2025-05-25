@@ -177,10 +177,10 @@ let rec internal domToOutputTree (dom: ScadDomNode) : OutputTree =
     | Minkowski(convexity, children) ->
         let args = convexity |> Option.map (fun c -> RawFnArg (i_str c)) |> Option.toList
         FnCall("minkowski", args, children |> List.map domToOutputTree)
-    | AsteriskModifier child & MatchName "*" modifier
-    | ExclamationModifier child & MatchName "!" modifier
-    | HashModifier child & MatchName "#" modifier
-    | PercentModifier child & MatchName "%" modifier ->
+    | DisableModifier child & MatchName "*" modifier
+    | RootModifier child & MatchName "!" modifier
+    | DebugModifier child & MatchName "#" modifier
+    | BackgroundModifier child & MatchName "%" modifier ->
         Modified(modifier, domToOutputTree child)
     
 let private writeIndent (tw: TextWriter) (depth: int) =
@@ -230,6 +230,7 @@ let rec private renderOutput'
     | Modified(modifier, child) ->
         pendingModifiers.Enqueue modifier
         renderOutput' tw child depth pendingModifiers
+
 let private renderOutput (tw: TextWriter) (output: OutputTree) =
     let pendingModifiers = Queue<string>()
     renderOutput' tw output 0 pendingModifiers

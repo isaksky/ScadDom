@@ -1,11 +1,13 @@
 module Tests
 
 open System.Text.RegularExpressions
+open ScadDom
 open ScadDom.Dom
 open ScadDom.Scad
 open ScadDom.Common
-
 open Xunit
+
+type F = Factory
 
 // User's ws, normalize, r, and @= definitions
 let ws = Regex("\\s+")
@@ -39,7 +41,7 @@ let ``Cube single dimension Works`` () =
 
 [<Fact>]
 let ``Cube multiple dimensions centered Works`` () =
-    "cube([5, 6, 7], center = true);" @= Cube(5.0, 6.0, 7.0, true)
+    "cube([5, 6, 7], center = true);" @= F.Cube(5.0, 6.0, 7.0, true)
 
 [<Fact>]
 let ``Cylinder Works`` () =
@@ -47,13 +49,13 @@ let ``Cylinder Works`` () =
 
 [<Fact>]
 let ``Cylinder centered Works`` () =
-    "cylinder(10, 5, 5, center = true);" @= Cylinder(10.0, 5.0, 5.0, true)
+    "cylinder(10, 5, 5, center = true);" @= F.Cylinder(10.0, 5.0, true)
 
 [<Fact>]
 let ``Difference Works`` () =
     // Expected string is the target normalized output
     "difference() { circle(10); circle(5); }"
-    @= Difference [ Circle 10.0; Circle 5.0 ]
+    @= F.Difference(Circle 10.0, Circle 5.0)
 
 [<Fact>]
 let ``Union Works`` () =
@@ -119,7 +121,7 @@ let ``LinearExtrude with options Works`` () =
 [<Fact>]
 let ``RotateExtrude minimal Works`` () =
     """rotate_extrude() { circle(2); }"""
-    @= RotateExtrude(Circle 2.0, None, None, None)
+    @= F.RotateExtrude(Circle 2.0)
 
 [<Fact>]
 let ``RotateExtrude with options Works`` () =
@@ -130,7 +132,7 @@ let ``RotateExtrude with options Works`` () =
 
 [<Fact>]
 let ``Import minimal Works`` () =
-    """import("my_model.stl");""" @= Import("my_model.stl", None, None)
+    """import("my_model.stl");""" @= F.Import("my_model.stl")
 
 [<Fact>]
 let ``Import with convexity Works`` () =
@@ -187,27 +189,27 @@ let ``Minkowski with convexity Works`` () =
 
 [<Fact>]
 let ``AsteriskModifier Works`` () =
-    "*circle(5);" @= AsteriskModifier(Circle 5.0)
+    "*circle(5);" @= DisableModifier(Circle 5.0)
 
 [<Fact>]
 let ``ExclamationModifier Works`` () =
-    "!sphere(2);" @= ExclamationModifier(Sphere 2.0)
+    "!sphere(2);" @= RootModifier(Sphere 2.0)
 
 [<Fact>]
 let ``HashModifier Works`` () =
-    "#cube(3, center = false);" @= HashModifier(Cube(3.0, 3.0, 3.0, false))
+    "#cube(3, center = false);" @= DebugModifier(F.Cube(3.0))
 
 [<Fact>]
 let ``PercentModifier Works`` () =
     "%cylinder(5, 1, 1, center = true);"
-    @= PercentModifier(Cylinder(5.0, 1.0, 1.0, true))
+    @= BackgroundModifier(Cylinder(5.0, 1.0, 1.0, true))
 
 [<Fact>]
 let ``Nested modifiers and operations Works`` () =
     let n =
         Union
-            [ AsteriskModifier(Circle 10.0)
-              Translate(HashModifier(Cube(5.0, 5.0, 5.0, true)), { x = 10.0; y = 0.0; z = 0.0 }) ]
+            [ DisableModifier(Circle 10.0)
+              Translate(DebugModifier(Cube(5.0, 5.0, 5.0, true)), { x = 10.0; y = 0.0; z = 0.0 }) ]
     // Adopting the compact modifier style and semicolons for children
     """union() { *circle(10); translate(v = [10, 0, 0]) { #cube(5, center = true); } }"""
     @= n
