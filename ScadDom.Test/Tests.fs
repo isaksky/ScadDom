@@ -120,13 +120,13 @@ let ``LinearExtrude with options Works`` () =
 
 [<Fact>]
 let ``RotateExtrude minimal Works`` () =
-    """rotate_extrude() { circle(2); }"""
-    @= F.RotateExtrude(Circle 2.0)
+    """rotate_extrude() { circle(2); }""" @= F.RotateExtrude(Circle 2.0)
 
 [<Fact>]
 let ``RotateExtrude with options Works`` () =
     let re =
         RotateExtrude(child = Square(1.0, 4.0, false), convexity = Some 10, angle = Some 270.0, start = Some 45.0)
+
     """rotate_extrude(convexity = 10, angle = 270, start = 45) { square([1, 4], center = false); }"""
     @= re
 

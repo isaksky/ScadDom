@@ -2,7 +2,6 @@ namespace ScadDom
 
 open System
 open System.Collections.Generic
-open ScadDom.Common
 open System.Runtime.InteropServices
 open ScadDom.Dom
 

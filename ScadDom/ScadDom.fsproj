@@ -8,7 +8,7 @@
     <ItemGroup>
         <Compile Include="Common.fs"/>
         <Compile Include="Dom.fs"/>
-        <Compile Include="Factory.fs" />
+        <Compile Include="Factory.fs"/>
         <Compile Include="Scad.fs"/>
     </ItemGroup>
 
