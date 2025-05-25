@@ -10,6 +10,12 @@ open ScadDom.Dom
 /// </summary>
 type Factory =
     private new() = {}
+    
+    static member Point(x: double, y: double) : Point2d =
+        { Point2d.x = x; y = y }
+
+    static member Point(x: double, y: double, z: double) : Point3d =
+        { Point3d.x = x; y = y; z = z }        
 
     //=========================================================================
     // Boolean Operations
