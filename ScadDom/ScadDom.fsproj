@@ -10,6 +10,7 @@
         <Compile Include="Dom.fs"/>
         <Compile Include="Factory.fs"/>
         <Compile Include="Scad.fs"/>
+        <Compile Include="Extensions.fs" />
     </ItemGroup>
 
 </Project>

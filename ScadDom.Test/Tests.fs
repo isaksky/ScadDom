@@ -3,8 +3,6 @@ module Tests
 open System.Text.RegularExpressions
 open ScadDom
 open ScadDom.Dom
-open ScadDom.Scad
-open ScadDom.Common
 open Xunit
 
 type F = Factory
@@ -14,8 +12,8 @@ let ws = Regex("\\s+")
 
 let normalize (s: string) = ws.Replace(s, " ").Trim() // Added Trim() to handle potential leading/trailing spaces from normalization
 
-let r dom =
-    let s = renderToString dom
+let r (dom: ScadDomNode) =
+    let s = Scad.Render dom
     normalize s
 
 let inline (@=) (expected: string) (actual: ScadDomNode) =
